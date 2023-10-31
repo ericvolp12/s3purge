@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,7 +17,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func deleteObject(svc *s3.Client, bucketName string, key string, wg *sync.WaitGroup, counter *int64) {
+func deleteObject(svc *s3.Client, bucketName string, key string, wg *sync.WaitGroup, counter *atomic.Int64) {
 	defer wg.Done()
 
 	_, err := svc.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
@@ -30,7 +31,7 @@ func deleteObject(svc *s3.Client, bucketName string, key string, wg *sync.WaitGr
 	}
 
 	slog.Debug("deleted object", "key", key)
-	*counter++
+	counter.Add(1)
 }
 
 func main() {
@@ -108,14 +109,14 @@ func main() {
 			})
 
 			var wg sync.WaitGroup
-			var deleteCounter int64
+			deleteCounter := atomic.Int64{}
 			startTime := time.Now()
 
 			go func() {
 				for {
 					time.Sleep(c.Duration("rateDisplayInterval"))
 					duration := time.Since(startTime).Seconds()
-					rate := float64(deleteCounter) / duration
+					rate := float64(deleteCounter.Load()) / duration
 					slog.Info(fmt.Sprintf("Current deletion rate: %.3f items/second", rate))
 				}
 			}()
@@ -141,7 +142,7 @@ func main() {
 			}
 
 			wg.Wait() // Wait for all deletions to complete
-			slog.Info(fmt.Sprintf("Deleted %d objects", deleteCounter))
+			slog.Info(fmt.Sprintf("Deleted %d objects", deleteCounter.Load()))
 			return nil
 		},
 	}
