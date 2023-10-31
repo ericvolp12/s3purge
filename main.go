@@ -36,7 +36,7 @@ func deleteObject(svc *s3.Client, bucketName string, key string, wg *sync.WaitGr
 
 func main() {
 	app := &cli.App{
-		Name:  "s3deleter",
+		Name:  "s3purge",
 		Usage: "Delete all files in an S3-compatible bucket",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -86,6 +86,8 @@ func main() {
 			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 				Level: logLvl,
 			})))
+
+			slog.Info("Starting S3 purge", "endpoint", endpoint, "bucket", bucketName, "concurrency", c.Int64("concurrency"))
 
 			cfg, err := config.LoadDefaultConfig(context.TODO(),
 				config.WithEndpointResolver(aws.EndpointResolverFunc(
