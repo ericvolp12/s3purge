@@ -17,7 +17,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func deleteObject(svc *s3.Client, bucketName string, key string, wg *sync.WaitGroup, counter *atomic.Int64) {
+func deleteObject(svc *s3.Client, bucketName string, key string, wg *sync.WaitGroup, counter *atomic.Uint64) {
 	defer wg.Done()
 
 	_, err := svc.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
@@ -109,7 +109,7 @@ func main() {
 			})
 
 			var wg sync.WaitGroup
-			deleteCounter := atomic.Int64{}
+			deleteCounter := atomic.Uint64{}
 			startTime := time.Now()
 
 			go func() {
