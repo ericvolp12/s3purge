@@ -4,7 +4,7 @@
 
 Existing methods of purging S3 buckets (i.e. `rclone purge`) are rather slow and don't have the performance required to expeditiously delete large numbers (hundreds of thousands to millions) of objects in a reasonable timeframe.
 
-`s3purge` has been tested on Cloudflare's R2 object storage to delete ~1,000 objects per second using the default concurrency of `250`.
+`s3purge` has been tested on Cloudflare's R2 object storage to delete ~3,000 objects per second using the default concurrency of `250`.
 
 ## Building and Running
 

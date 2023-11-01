@@ -14,24 +14,37 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/urfave/cli/v2"
 )
 
-func deleteObject(svc *s3.Client, bucketName string, key string, wg *sync.WaitGroup, counter *atomic.Uint64) {
+func deleteObjects(svc *s3.Client, bucketName string, keys []string, wg *sync.WaitGroup, counter *atomic.Uint64) {
 	defer wg.Done()
 
-	_, err := svc.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+	_, err := svc.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
 		Bucket: &bucketName,
-		Key:    &key,
+		Delete: &types.Delete{
+			Objects: func() []types.ObjectIdentifier {
+				identifiers := make([]types.ObjectIdentifier, len(keys))
+				for i, key := range keys {
+					identifiers[i] = types.ObjectIdentifier{
+						Key: &key,
+					}
+				}
+				return identifiers
+			}(),
+		},
 	})
 
 	if err != nil {
-		slog.Error("failed to delete object", "key", key, "error", err)
+		slog.Error("failed to delete objects", "keys", keys, "error", err)
 		return
 	}
 
-	slog.Debug("deleted object", "key", key)
-	counter.Add(1)
+	for _, key := range keys {
+		slog.Debug("deleted object", "key", key)
+	}
+	counter.Add(uint64(len(keys)))
 }
 
 func main() {
@@ -125,6 +138,9 @@ func main() {
 
 			sem := make(chan struct{}, c.Int64("concurrency"))
 
+			const batchSize = 500   // Group objects into batches of 500
+			var objectKeys []string // This slice will accumulate keys to delete in a batch
+
 			for paginator.HasMorePages() {
 				output, err := paginator.NextPage(context.TODO())
 				if err != nil {
@@ -132,15 +148,28 @@ func main() {
 				}
 
 				for _, item := range output.Contents {
-					sem <- struct{}{} // Acquire concurrency slot
-					wg.Add(1)
-					go func(key string) {
-						defer func() {
-							<-sem // Release concurrency slot
-						}()
-						deleteObject(svc, bucketName, key, &wg, &deleteCounter)
-					}(aws.ToString(item.Key))
+					objectKeys = append(objectKeys, aws.ToString(item.Key))
+
+					// If we have reached the batchSize, delete these objects as a batch
+					if len(objectKeys) == batchSize {
+						sem <- struct{}{} // Acquire concurrency slot
+						wg.Add(1)
+						go func(keysToDelete []string) {
+							defer func() {
+								<-sem // Release concurrency slot
+							}()
+							deleteObjects(svc, bucketName, keysToDelete, &wg, &deleteCounter)
+						}(objectKeys)
+						objectKeys = nil // Reset the slice for the next batch
+					}
 				}
+			}
+
+			// After exiting the loop, check if there are any remaining keys to delete
+			if len(objectKeys) > 0 {
+				sem <- struct{}{} // Acquire concurrency slot
+				wg.Add(1)
+				go deleteObjects(svc, bucketName, objectKeys, &wg, &deleteCounter)
 			}
 
 			wg.Wait() // Wait for all deletions to complete
