@@ -26,7 +26,8 @@ func deleteObjects(svc *s3.Client, bucketName string, keys []string, wg *sync.Wa
 		Delete: &types.Delete{
 			Objects: func() []types.ObjectIdentifier {
 				identifiers := make([]types.ObjectIdentifier, len(keys))
-				for i, key := range keys {
+				for i := range keys {
+					key := keys[i]
 					identifiers[i] = types.ObjectIdentifier{
 						Key: &key,
 					}
